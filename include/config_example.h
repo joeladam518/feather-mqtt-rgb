@@ -4,18 +4,18 @@
 #include <soc/soc.h>
 
 // Debug
-#define DEBUG false // This will trigger other library's debug functionality
-#define APP_DEBUG false
+#define DEBUG          false // This will trigger other library's debug functionality
+#define APP_DEBUG      false
+#define APP_MQTT_DEBUG false
 
 // Wifi
 #define WLAN_SSID ""
 #define WLAN_PASS ""
 
 // MQTT
-#define MQTT_BROKER "0.0.0.0"
-#define MQTT_PORT   1883 // Use 8883 for SSL
-#define MQTT_USER   ""
-#define MQTT_PASS   ""
+#define MQTT_URI  "mqtt://0.0.0.0:1883" // Use 8883 for SSL
+#define MQTT_USER ""
+#define MQTT_PASS ""
 
 // Subscription Topics
 #define SUB_GET_COLOR     ""

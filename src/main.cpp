@@ -1,5 +1,10 @@
 #include "config.h"
 #include "globals.h"
+// FreeRtos
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#include <freertos/semphr.h>
+#include <freertos/queue.h>
 // Library Headers
 #include <Arduino.h>
 #include <HardwareSerial.h>
@@ -9,17 +14,11 @@
 #include <ArduinoJson.h>
 #include <esp_log.h>
 // Custom Headers
-#include "MqttEventProcessing.h"
-#include "NeoPixelRing.h"
+#include "mqttEventProcessing.h"
+#include "neoPixelRing.h"
 
 //==============================================================================
 // Globals
-
-// Wifi client
-WiFiClient wifiClient;
-
-// Mqtt client
-esp_mqtt_client_handle_t mqttClient;
 
 /**
  *  Adafruit NeoPixels
@@ -48,28 +47,20 @@ QueueHandle_t longActionQueue = NULL;
 // Mutexes
 SemaphoreHandle_t ringMutex = NULL;
 
-//==============================================================================
-// Main
-
-// Mqtt client config
+// Mqtt client
+esp_mqtt_client_handle_t mqttClient;
 esp_mqtt_client_config_t mqtt_config = {
     .event_loop_handle = &mqttTaskHandle,
-    .host = MQTT_BROKER,
-    .port = MQTT_PORT,
+    .uri = MQTT_URI,
     .client_id = "RGB_MQTT_TREE",
+    .keepalive = 360,
     .task_prio = 5,
-    .task_stack = 6144,
+    .task_stack = 4096, // 6144
     .buffer_size = 2048,
 };
 
-static void stop(const __FlashStringHelper *message = NULL)
-{
-    if (message) {
-        Serial.println(message);
-    }
-
-    while(1);
-}
+//==============================================================================
+// Main
 
 // NOTE: setup is excuted on core #1
 void setup()
@@ -102,29 +93,26 @@ void setup()
 
     // Configure RTOS
     shortActionQueue = xQueueCreate(3, sizeof(SubscriptionAction_t));
-    if (!shortActionQueue) {
-        stop(F("Failed to ceate shortActionQueue"));
-    }
-    longActionQueue = xQueueCreate(5, sizeof(SubscriptionAction_t));
-    if (!longActionQueue) {
-        stop(F("Failed to ceate longActionQueue"));
-    }
+    APP_FAIL_IF(!shortActionQueue, F("Failed to ceate shortActionQueue"));
+    longActionQueue = xQueueCreate(3, sizeof(SubscriptionAction_t));
+    APP_FAIL_IF(!longActionQueue, F("Failed to ceate longActionQueue"))
     ringMutex = xSemaphoreCreateMutex();
-    if (!ringMutex) {
-        stop(F("Failed to ceate ringMutex"));
-    }
+    APP_FAIL_IF(!ringMutex, F("Failed to ceate ringMutex"));
 
     // Initialize neopixel ring
     if (xSemaphoreTake(ringMutex, 0) == pdTRUE) {
         ring.begin();
         xSemaphoreGive(ringMutex);
+    } else {
+        Serial.println(F("Didn't start ring"));
+        while(1);
     }
 
     // Create the tasks that process the incomming mqtt data
     xTaskCreatePinnedToCore(
         processShortTask,        // Function to be called
         "Process Short Tasks",   // Name of task
-        2048,                    // Stack size (bytes in ESP32, words in FreeRTOS)
+        4096,                    // Stack size (bytes in ESP32, words in FreeRTOS)
         NULL,                    // Parameter to pass to function
         2,                       // Task priority (0 to configMAX_PRIORITIES - 1)
         &processShortTaskHandle, // Task handle
@@ -133,7 +121,7 @@ void setup()
     xTaskCreatePinnedToCore(
         processLongTask,         // Function to be called
         "Process Long Actions",  // Name of task
-        2048,                    // Stack size (bytes in ESP32, words in FreeRTOS)
+        4096,                    // Stack size (bytes in ESP32, words in FreeRTOS)
         NULL,                    // Parameter to pass to function
         1,                       // Task priority (0 to configMAX_PRIORITIES - 1)
         &processLongTaskHandle,  // Task handle
@@ -142,11 +130,13 @@ void setup()
 
     // Start the mqtt task
     mqttClient = esp_mqtt_client_init(&mqtt_config);
+    APP_FAIL_IF(!mqttClient, F("mqtt client failed to initialize..."));
     esp_mqtt_client_register_event(mqttClient, MQTT_EVENT_ANY, mqtt_event_handler, NULL);
     esp_mqtt_client_start(mqttClient);
 
     Serial.println(F("Finished Setup"));
     Serial.println("");
+
     // Remove the setup() and loop() task
     vTaskDelete(NULL);
 }

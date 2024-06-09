@@ -1,5 +1,5 @@
-#ifndef __LED_H__
-#define __LED_H__
+#ifndef __RGB_TREE_LED_H__
+#define __RGB_TREE_LED_H__
 
 typedef struct RGB
 {

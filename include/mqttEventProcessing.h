@@ -3,7 +3,6 @@
 
 #include "config.h"
 #include <mqtt_client.h>
-#include <esp_log.h>
 
 #define SUBSCRIPTIONDATALEN 100
 #define READ_SUBSCRIPTION_TIMEOUT 2000
@@ -18,17 +17,17 @@ typedef enum MqttQos {
     QOS_EXACTLY_ONCE = 2,
 } MqttQos_t;
 
-typedef enum SubsctiptionCallbackType {
+typedef enum SubsctiptionActionType {
     UNKNOWN = 0,
     GET_COLOR = 1,
     SET_COLOR = 2,
     GET_TW = 3,
     SET_TW = 4
-} SubsctiptionCallbackType_t;
+} SubsctiptionActionType_t;
 
 typedef struct SubscriptionAction {
-    SubsctiptionCallbackType_t callbackType;
     esp_mqtt_client_handle_t client;
+    SubsctiptionActionType_t type;
     char data[SUBSCRIPTIONDATALEN];
     uint16_t dataLength;
 } SubscriptionAction_t;
