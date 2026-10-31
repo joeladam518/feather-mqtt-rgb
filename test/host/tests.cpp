@@ -148,42 +148,42 @@ static void test_color_with_transition_breaks_the_loop_smoothly(void)
     CHECK(!state.isAnimating());
 }
 
-// Requirement: LED commands can't disturb the loop. This runs two copies side by side,
-// flips LEDs on one of them for a minute of pretend time, and checks that every single
-// frame matches the copy that wasn't touched.
-static void test_twinkles_leave_the_loop_alone(void)
+// Requirement: twinkle commands can't disturb the loop. This runs two copies side by side,
+// flips the twinkle on one of them for a minute of pretend time, and checks that every
+// single frame matches the copy that wasn't touched.
+static void test_twinkle_leaves_the_loop_alone(void)
 {
-    LightState withTwinkles;
+    LightState withTwinkle;
     LightState without;
-    send(withTwinkles, START_LOOP, 0);
+    send(withTwinkle, START_LOOP, 0);
     send(without, START_LOOP, 0);
 
     for (uint32_t now = 0; now < 60000; now += FRAME_MS) {
         if (now % 1000 == 0) {
-            withTwinkles.setTwinkle((now / 1000) % TWINKLE_COUNT, (now / 1000) % 2 == 0);
+            withTwinkle.setTwinkle((now / 1000) % 2 == 0);
         }
-        CHECK(same(withTwinkles.render(now), without.render(now)));
+        CHECK(same(withTwinkle.render(now), without.render(now)));
     }
 
-    CHECK(withTwinkles.isAnimating());
-    CHECK(withTwinkles.status().effect == EFFECT_COLORLOOP);
+    CHECK(withTwinkle.isAnimating());
+    CHECK(withTwinkle.status().effect == EFFECT_COLORLOOP);
 }
 
-// Each LED output is separate, and the ring turning off doesn't affect them.
-static void test_twinkles_are_independent(void)
+// The twinkle starts off, and the ring turning off doesn't affect it.
+static void test_twinkle_is_independent(void)
 {
     LightState state;
-    state.setTwinkle(1, true);
-    CHECK(!state.status().twinkles[0]);
-    CHECK(state.status().twinkles[1]);
-    CHECK(!state.status().twinkles[2]);
+    CHECK(!state.status().twinkle);
+
+    state.setTwinkle(true);
+    CHECK(state.status().twinkle);
 
     send(state, SET_RED, 0);
     send(state, "{\"state\":\"OFF\"}", 10);
-    CHECK(state.status().twinkles[1]);
+    CHECK(state.status().twinkle);
 
-    state.setTwinkle(1, false);
-    CHECK(!state.status().twinkles[1]);
+    state.setTwinkle(false);
+    CHECK(!state.status().twinkle);
 }
 
 //==============================================================================
@@ -399,7 +399,7 @@ static void test_payload_size_limit(void)
     CHECK(!parseLightCommand(payload, COMMAND_PAYLOAD_MAX + 1, &command));
 }
 
-// The plain payload the LED outputs use. It's an exact match only, even for case.
+// The plain payload the twinkle uses. It's an exact match only, even for case.
 static void test_on_off(void)
 {
     bool on = false;
@@ -511,19 +511,17 @@ static void test_discovery(void)
     CHECK(strcmp(ring["effect_list"][0], "colorloop") == 0);
     CHECK(strcmp(ring["effect_list"][1], "solid") == 0);
 
-    const char *keys[TWINKLE_COUNT] = {"tw1", "tw2", "tw3"};
-    for (int i = 0; i < TWINKLE_COUNT; i++) {
-        JsonObject twinkle = doc["cmps"][keys[i]];
-        CHECK(strcmp(twinkle["p"], "switch") == 0);
-        CHECK(strcmp(twinkle["command_topic"], TOPIC_TWINKLE_SET[i]) == 0);
-        CHECK(strcmp(twinkle["state_topic"], TOPIC_TWINKLE_STATE[i]) == 0);
-        CHECK(twinkle["unique_id"].is<const char *>());
-    }
+    JsonObject twinkle = doc["cmps"]["twinkle"];
+    CHECK(strcmp(twinkle["p"], "switch") == 0);
+    CHECK(strcmp(twinkle["command_topic"], TOPIC_TWINKLE_SET) == 0);
+    CHECK(strcmp(twinkle["state_topic"], TOPIC_TWINKLE_STATE) == 0);
+    CHECK(twinkle["unique_id"].is<const char *>());
+
+    // Exactly the two entities, so a leftover one can't go unnoticed
+    CHECK(doc["cmps"].size() == 2);
 
     // Every unique_id really is unique
-    CHECK(strcmp(doc["cmps"]["tw1"]["unique_id"], doc["cmps"]["tw2"]["unique_id"]) != 0);
-    CHECK(strcmp(doc["cmps"]["tw2"]["unique_id"], doc["cmps"]["tw3"]["unique_id"]) != 0);
-    CHECK(strcmp(doc["cmps"]["ring"]["unique_id"], doc["cmps"]["tw1"]["unique_id"]) != 0);
+    CHECK(strcmp(ring["unique_id"], twinkle["unique_id"]) != 0);
 }
 
 //==============================================================================
@@ -536,8 +534,8 @@ int main(void)
     test_loop_comes_back_around();
     test_color_breaks_the_loop();
     test_color_with_transition_breaks_the_loop_smoothly();
-    test_twinkles_leave_the_loop_alone();
-    test_twinkles_are_independent();
+    test_twinkle_leaves_the_loop_alone();
+    test_twinkle_is_independent();
     test_fade_reaches_the_halfway_point();
     test_fade_length_survives_late_frames();
     test_new_color_during_a_fade_starts_from_what_is_showing();

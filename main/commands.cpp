@@ -154,7 +154,7 @@ bool parseLightCommand(const char *payload, size_t length, LightCommand_t *comma
     return true;
 }
 
-// Reads the plain ON or OFF payload that the LED outputs use.
+// Reads the plain ON or OFF payload that the twinkle lights use.
 //
 // strncmp only compares the first n bytes, which is safe here because the payload has no
 // NUL terminator. Checking the length first is what makes "ONE" fail instead of matching.

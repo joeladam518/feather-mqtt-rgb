@@ -2,14 +2,14 @@
 
 An MQTT powered RGB LED tree. It does three things:
 
-1. Switches 3 LED outputs on and off.
+1. Switches the twinkle lights on and off.
 2. Sets the color of a NeoPixel ring.
 3. Runs a color loop, where the whole ring slowly drifts through the rainbow.
 
-A new color breaks the loop immediately. The LED outputs can be switched at any time without disturbing the loop.
+A new color breaks the loop immediately. The twinkle lights can be switched at any time without disturbing the loop.
 
-Firmware for the Adafruit HUZZAH32 ESP32 Feather, built with
-[ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/stable/esp32/) v6.1 or newer.
+Firmware for the [Adafruit ESP32 Feather V2](https://learn.adafruit.com/adafruit-esp32-feather-v2) (ESP32-PICO-MINI-02,
+8MB flash), built with [ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/stable/esp32/) v6.1 or newer.
 
 - [Hardware](#hardware)
 - [Setup](#setup)
@@ -26,11 +26,13 @@ Firmware for the Adafruit HUZZAH32 ESP32 Feather, built with
 | What | GPIO | Setting in `config.h` |
 |---|---|---|
 | NeoPixel ring data (16 pixels, GRB) | 14 | `NEO_PIXEL_PIN`, `NEO_PIXEL_COUNT` |
-| LED output 1 (`tw1`) | 33 | `TW1_PIN` |
-| LED output 2 (`tw2`) | 15 | `TW2_PIN` |
-| LED output 3 (`tw3`) | 32 | `TW3_PIN` |
+| Twinkle lights | 33 | `TWINKLE_PIN` |
+| Power for the NeoPixel on the board | 2 | `BOARD_PIXEL_POWER_PIN` |
 
-GPIO 15 is one of the ESP32's boot strapping pins, so keep anything attached to it from pulling it high during boot.
+GPIO 14 may output a PWM signal during boot, so the ring can flicker briefly before the firmware clears it.
+
+The NeoPixel on the board is kept dark by holding GPIO 2 low, which cuts its power. Its data line is GPIO 0, which is
+unused for now. GPIO 2 also powers the STEMMA QT connector, so anything plugged in there has no power either.
 
 Everything starts off after a power cycle or reset.
 
@@ -137,8 +139,8 @@ ESP_LOGI(TAG, "Stack left: %u", uxTaskGetStackHighWaterMark(NULL));
 ```
 
 **JTAG (`idf.py openocd`, `idf.py gdb`).** You'll rarely need this here. This board has no built-in JTAG, so it needs
-an external probe such as an ESP-Prog, and JTAG uses GPIO 12 to 15. That includes the NeoPixel data pin (14) and `tw2`
-(15), so those have to be disconnected while debugging this way. Use logs and core dumps first.
+an external probe such as an ESP-Prog, and JTAG uses GPIO 12 to 15. That includes the NeoPixel data pin (14), so the
+ring has to be disconnected while debugging this way. Use logs and core dumps first.
 
 ## Tests
 
@@ -173,7 +175,7 @@ for (int i = 0; i < steps; i++) {
 
 Instead, the lights task (`lights.cpp`) waits on its queue with a timeout of one frame. Either a command arrives and
 is applied straight away, or the timeout runs out and it's time to draw. Either way it draws one frame and goes back
-to waiting. Since it's never stuck in the middle of an animation, a color can break the loop right away, and LED
+to waiting. Since it's never stuck in the middle of an animation, a color can break the loop right away, and twinkle
 commands are just a GPIO write in between frames.
 
 **`LightState` decides what to show.** You give it the time, and it returns the color for that moment. Working from
@@ -200,8 +202,8 @@ would turn its messages into a `Command_t`, call `lightsSend()`, and get a line 
 |---|---|---|
 | `<base>/light/set` | To device | JSON, see below |
 | `<base>/light/state` | From device, retained | JSON, see below |
-| `<base>/tw1/set`, `tw2`, `tw3` | To device | `ON` or `OFF` |
-| `<base>/tw1/state`, `tw2`, `tw3` | From device, retained | `ON` or `OFF` |
+| `<base>/twinkle/set` | To device | `ON` or `OFF` |
+| `<base>/twinkle/state` | From device, retained | `ON` or `OFF` |
 | `<base>/availability` | From device, retained | `online` or `offline` |
 | `homeassistant/device/<DEVICE_ID>/config` | From device | Home Assistant discovery |
 | `homeassistant/status` | To device | `online` makes the device send discovery and its state again |
@@ -264,8 +266,8 @@ mosquitto_pub -h <broker> -t rgb_tree/light/set -m '{"color":{"r":0,"g":0,"b":25
 # Start the color loop
 mosquitto_pub -h <broker> -t rgb_tree/light/set -m '{"effect":"colorloop"}'
 
-# Switch an LED output while the loop keeps running
-mosquitto_pub -h <broker> -t rgb_tree/tw1/set -m ON
+# Switch the twinkle lights while the loop keeps running
+mosquitto_pub -h <broker> -t rgb_tree/twinkle/set -m ON
 
 # Turn the ring off, then bring it back
 mosquitto_pub -h <broker> -t rgb_tree/light/set -m '{"state":"OFF"}'
@@ -284,8 +286,8 @@ The old topics and payloads are gone. An app using them will stop working until 
 | `SUB_SET_COLOR` with `{"r":255,"g":0,"b":0}` | `<base>/light/set` with `{"color":{"r":255,"g":0,"b":0}}` |
 | `"time": 100` (counted 10 ms steps, so 1 second) | `"transition": 1` (seconds) |
 | `SUB_GET_COLOR`, then read `PUB_GET_COLOR` | Subscribe to `<base>/light/state`, it's retained and updates itself |
-| `SUB_SET_TW_LIGHTS` with `{"tw1":1,"tw2":0}` | One message per output: `ON` to `<base>/tw1/set`, `OFF` to `<base>/tw2/set` |
-| `SUB_GET_TW_LIGHTS`, then read `PUB_GET_TW_LIGHTS` | Subscribe to `<base>/tw1/state`, `tw2`, and `tw3` |
+| `SUB_SET_TW_LIGHTS` with `{"tw1":1}` | `ON` or `OFF` to `<base>/twinkle/set` |
+| `SUB_GET_TW_LIGHTS`, then read `PUB_GET_TW_LIGHTS` | Subscribe to `<base>/twinkle/state` |
 | Nothing | Start the loop with `{"effect":"colorloop"}` |
 | Nothing | Subscribe to `<base>/availability` to see if the device is online |
 
@@ -307,9 +309,9 @@ It shows up with these entities:
 | Entity | Type | Controls |
 |---|---|---|
 | Ring | Light | On/off, color, brightness, and transition. The Effect list has `colorloop` and `solid` |
-| Twinkle 1, 2, 3 | Switch | Each LED output |
+| Twinkle | Switch | The twinkle lights |
 
-Picking a color while `colorloop` is running breaks the loop. All of them show as unavailable when the device goes
+Picking a color while `colorloop` is running breaks the loop. Both show as unavailable when the device goes
 offline. The device re-announces itself whenever Home Assistant restarts.
 
 To remove it, delete the device in Home Assistant. It'll be added again the next time the device connects unless you
@@ -335,11 +337,9 @@ mqtt:
       effect: true
       effect_list: ["colorloop", "solid"]
   - switch:
-      name: Tree twinkle 1
-      unique_id: rgb_tree_tw1
-      command_topic: rgb_tree/tw1/set
-      state_topic: rgb_tree/tw1/state
+      name: Tree twinkle
+      unique_id: rgb_tree_twinkle
+      command_topic: rgb_tree/twinkle/set
+      state_topic: rgb_tree/twinkle/state
       availability_topic: rgb_tree/availability
 ```
-
-Repeat the `switch` block for `tw2` and `tw3`.

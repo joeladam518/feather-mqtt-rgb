@@ -23,11 +23,13 @@
 #define TOPIC_BASE  "rgb_tree"   // Every topic starts with this
 
 // pins
-#define TW1_PIN 33
-#define TW2_PIN 15
-#define TW3_PIN 32
+#define TWINKLE_PIN 33
 #define NEO_PIXEL_PIN 14
 #define NEO_PIXEL_COUNT 16
+
+// Switches the power to the NeoPixel on the board itself. Its data line is GPIO 0.
+// This also powers the STEMMA QT connector, so the two can only go on and off together.
+#define BOARD_PIXEL_POWER_PIN 2
 
 // How long the color loop takes to go all the way around
 #define LOOP_CYCLE_MS 30000

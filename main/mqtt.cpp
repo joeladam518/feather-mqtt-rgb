@@ -79,11 +79,10 @@ static void handleLightCommand(const char *payload, size_t length)
     lightsSend(&command);
 }
 
-static void handleTwinkleCommand(uint8_t index, const char *payload, size_t length)
+static void handleTwinkleCommand(const char *payload, size_t length)
 {
     Command_t command = {};
     command.type = COMMAND_TWINKLE;
-    command.twinkle.index = index;
 
     if (!parseOnOff(payload, length, &command.twinkle.on)) {
         ESP_LOGW(TAG, "Ignoring invalid twinkle command: %.*s", (int)length, payload);
@@ -119,11 +118,9 @@ static void handleData(esp_mqtt_event_handle_t event)
         return;
     }
 
-    for (uint8_t i = 0; i < TWINKLE_COUNT; i++) {
-        if (topicEquals(TOPIC_TWINKLE_SET[i], event->topic, event->topic_len)) {
-            handleTwinkleCommand(i, event->data, event->data_len);
-            return;
-        }
+    if (topicEquals(TOPIC_TWINKLE_SET, event->topic, event->topic_len)) {
+        handleTwinkleCommand(event->data, event->data_len);
+        return;
     }
 
     if (topicEquals(HA_STATUS_TOPIC, event->topic, event->topic_len)) {
@@ -138,11 +135,8 @@ static void handleData(esp_mqtt_event_handle_t event)
 static void subscribeAll(void)
 {
     esp_mqtt_client_subscribe(client, TOPIC_LIGHT_SET, QOS_AT_LEAST_ONCE);
+    esp_mqtt_client_subscribe(client, TOPIC_TWINKLE_SET, QOS_AT_LEAST_ONCE);
     esp_mqtt_client_subscribe(client, HA_STATUS_TOPIC, QOS_AT_LEAST_ONCE);
-
-    for (uint8_t i = 0; i < TWINKLE_COUNT; i++) {
-        esp_mqtt_client_subscribe(client, TOPIC_TWINKLE_SET[i], QOS_AT_LEAST_ONCE);
-    }
 }
 
 // This runs on the mqtt task, so nothing in here is allowed to wait. If it blocks,
@@ -222,7 +216,7 @@ void mqttStart(void)
     ESP_ERROR_CHECK(esp_mqtt_client_start(client));
 }
 
-// Publishes everything every time, and that's fine. It's four small messages, and it only
+// Publishes everything every time, and that's fine. It's two small messages, and it only
 // happens when something changes. Passing a length of 0 means "use the string's length".
 void mqttPublishStatus(const LightStatus_t *status)
 {
@@ -234,10 +228,8 @@ void mqttPublishStatus(const LightStatus_t *status)
         ESP_LOGE(TAG, "Status didn't fit in its buffer");
     }
 
-    for (uint8_t i = 0; i < TWINKLE_COUNT; i++) {
-        const char *state = status->twinkles[i] ? "ON" : "OFF";
-        esp_mqtt_client_publish(client, TOPIC_TWINKLE_STATE[i], state, 0, QOS_AT_MOST_ONCE, RETAIN);
-    }
+    const char *twinkleState = status->twinkle ? "ON" : "OFF";
+    esp_mqtt_client_publish(client, TOPIC_TWINKLE_STATE, twinkleState, 0, QOS_AT_MOST_ONCE, RETAIN);
 }
 
 // Says that we're online and tells Home Assistant what we are.

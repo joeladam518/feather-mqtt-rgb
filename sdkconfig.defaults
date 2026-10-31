@@ -1,9 +1,9 @@
 # The settings for this board. sdkconfig gets generated from this on the first build,
 # so after changing anything here, delete sdkconfig and build again.
 
-# Adafruit HUZZAH32 ESP32 Feather
+# Adafruit ESP32 Feather V2 (ESP32-PICO-MINI-02, 8MB flash)
 CONFIG_IDF_TARGET="esp32"
-CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y
 CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
 
 # The image is ~940K, right up against the stock 1M app partition

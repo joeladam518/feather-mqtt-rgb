@@ -1,17 +1,16 @@
 // discovery.cpp: builds the message that sets the device up in Home Assistant.
 //
 // Instead of you writing YAML by hand, the device describes itself: "I'm a device with one
-// light and three switches, and here are their topics". Home Assistant reads that and
-// creates all the entities. It's one big JSON message, and this is what it looks like,
+// light and a switch, and here are their topics". Home Assistant reads that and
+// creates the entities. It's one big JSON message, and this is what it looks like,
 // shortened:
 //
 //   {
 //     "dev":  {"ids":"rgb_tree", "name":"RGB Tree", ...},   the device itself
 //     "o":    {"name":"feather-mqtt-rgb-tree", ...},        what software sent this
 //     "cmps": {                                             its components, or entities
-//       "ring": {"p":"light", "schema":"json", ...},
-//       "tw1":  {"p":"switch", ...},
-//       ...
+//       "ring":    {"p":"light", "schema":"json", ...},
+//       "twinkle": {"p":"switch", ...}
 //     }
 //   }
 //
@@ -26,12 +25,6 @@
 #include "commands.h"
 #include "topics.h"
 
-// The name and id of each switch. These are arrays of constants so that the loop below
-// has strings that stay around, without having to build them while running.
-static const char *const TWINKLE_KEYS[TWINKLE_COUNT] = {"tw1", "tw2", "tw3"};
-static const char *const TWINKLE_NAMES[TWINKLE_COUNT] = {"Twinkle 1", "Twinkle 2", "Twinkle 3"};
-static const char *const TWINKLE_IDS[TWINKLE_COUNT] = {DEVICE_ID "_tw1", DEVICE_ID "_tw2", DEVICE_ID "_tw3"};
-
 // See https://www.home-assistant.io/integrations/mqtt/ (device discovery)
 size_t serializeDiscovery(char *output, size_t size)
 {
@@ -43,7 +36,7 @@ size_t serializeDiscovery(char *output, size_t size)
     device["ids"] = DEVICE_ID;
     device["name"] = DEVICE_NAME;
     device["mf"] = "Adafruit";
-    device["mdl"] = "HUZZAH32 ESP32 Feather";
+    device["mdl"] = "ESP32 Feather V2";
 
     // The software that's sending this, which the docs require for device discovery
     JsonObject origin = doc["o"].to<JsonObject>();
@@ -73,17 +66,15 @@ size_t serializeDiscovery(char *output, size_t size)
     effects.add("colorloop");
     effects.add("solid");
 
-    // The 3 LED outputs, as switches. Switches use ON and OFF by default, which is what
+    // The twinkle lights, as a switch. Switches use ON and OFF by default, which is what
     // parseOnOff in commands.cpp expects.
-    for (uint8_t i = 0; i < TWINKLE_COUNT; i++) {
-        JsonObject twinkle = components[TWINKLE_KEYS[i]].to<JsonObject>();
-        twinkle["p"] = "switch";
-        twinkle["name"] = TWINKLE_NAMES[i];
-        twinkle["unique_id"] = TWINKLE_IDS[i];
-        twinkle["command_topic"] = TOPIC_TWINKLE_SET[i];
-        twinkle["state_topic"] = TOPIC_TWINKLE_STATE[i];
-        twinkle["availability_topic"] = TOPIC_AVAILABILITY;
-    }
+    JsonObject twinkle = components["twinkle"].to<JsonObject>();
+    twinkle["p"] = "switch";
+    twinkle["name"] = "Twinkle";
+    twinkle["unique_id"] = DEVICE_ID "_twinkle";
+    twinkle["command_topic"] = TOPIC_TWINKLE_SET;
+    twinkle["state_topic"] = TOPIC_TWINKLE_STATE;
+    twinkle["availability_topic"] = TOPIC_AVAILABILITY;
 
     // Better to send nothing than JSON that got cut off halfway
     if (measureJson(doc) >= size) {

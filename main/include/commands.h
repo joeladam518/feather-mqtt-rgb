@@ -14,8 +14,6 @@
 // Longest command payload we accept
 #define COMMAND_PAYLOAD_MAX 256
 
-#define TWINKLE_COUNT 3
-
 // typedef gives a type a shorter name. The _t ending is a C naming habit that means
 // "this is a type". An enum is a set of named numbers, so the code can say EFFECT_SOLID
 // instead of a mystery 0.
@@ -42,9 +40,8 @@ typedef struct LightCommand {
     LightEffect_t effect;
 } LightCommand_t;
 
-// Switches one of the 3 LED outputs. index is 0, 1, or 2.
+// Switches the twinkle lights on or off
 typedef struct TwinkleCommand {
-    uint8_t index;
     bool on;
 } TwinkleCommand_t;
 
@@ -74,7 +71,7 @@ typedef struct LightStatus {
     RGB_t color;
     uint8_t brightness;
     LightEffect_t effect;
-    bool twinkles[TWINKLE_COUNT];
+    bool twinkle;
 } LightStatus_t;
 
 // The payloads are not NUL terminated, so these always take a length.

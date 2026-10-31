@@ -95,7 +95,7 @@ static uint8_t blend(uint8_t from, uint8_t to, uint32_t elapsed, uint32_t durati
 //
 // A constructor runs when a LightState is created. The list after the colon is a
 // member initializer list: it gives each member its starting value before the body
-// of the constructor runs. {} on twinkles sets every element of the array to false.
+// of the constructor runs.
 //
 // The color starts as white, so that a plain "turn on" shows something even if no
 // color has ever been set. The ring itself starts off because on is false.
@@ -104,7 +104,7 @@ LightState::LightState(void):
     color{255, 255, 255},
     brightness(255),
     effect(EFFECT_SOLID),
-    twinkles{},
+    twinkle(false),
     displayed{0, 0, 0},
     fading(false),
     fadeFrom{0, 0, 0},
@@ -221,9 +221,9 @@ void LightState::apply(const LightCommand_t &command, uint32_t nowMs)
 // Twinkle lights are kept completely separate from the ring. Nothing here touches any
 // of the ring's variables, which is why they can't disturb the loop. This only records
 // the state. lights.cpp is what really switches the pin.
-void LightState::setTwinkle(uint8_t index, bool twinkleOn)
+void LightState::setTwinkle(bool twinkleOn)
 {
-    twinkles[index] = twinkleOn;
+    twinkle = twinkleOn;
 }
 
 // Works out the color to show at this moment. The lights task calls this every frame.
@@ -271,9 +271,7 @@ LightStatus_t LightState::status(void) const
     current.color = color;
     current.brightness = brightness;
     current.effect = effect;
-    for (uint8_t i = 0; i < TWINKLE_COUNT; i++) {
-        current.twinkles[i] = twinkles[i];
-    }
+    current.twinkle = twinkle;
 
     return current;
 }

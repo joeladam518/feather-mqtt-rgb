@@ -29,7 +29,7 @@ private:
     RGB_t color;
     uint8_t brightness;
     LightEffect_t effect;
-    bool twinkles[TWINKLE_COUNT];
+    bool twinkle;
 
     // What's on the ring right now, which is where the next fade starts from
     RGB_t displayed;
@@ -53,7 +53,7 @@ public:
 
     // Methods
     void apply(const LightCommand_t &command, uint32_t nowMs);
-    void setTwinkle(uint8_t index, bool twinkleOn);
+    void setTwinkle(bool twinkleOn);
     RGB_t render(uint32_t nowMs);
     bool isAnimating(void) const;
     LightStatus_t status(void) const;

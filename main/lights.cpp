@@ -53,13 +53,9 @@
 // The label on this file's log lines
 static const char *TAG = "LIGHTS";
 
-// The pins in an array, so that a twinkle's index can be used to look up its pin.
-// The (gpio_num_t) casts are needed because config.h has them as plain numbers.
-static const gpio_num_t TWINKLE_PINS[TWINKLE_COUNT] = {
-    (gpio_num_t)TW1_PIN,
-    (gpio_num_t)TW2_PIN,
-    (gpio_num_t)TW3_PIN,
-};
+// The (gpio_num_t) casts are needed because config.h has these as plain numbers
+static const gpio_num_t TWINKLE_GPIO = (gpio_num_t)TWINKLE_PIN;
+static const gpio_num_t BOARD_PIXEL_POWER_GPIO = (gpio_num_t)BOARD_PIXEL_POWER_PIN;
 
 // "static" here means these variables are private to this file. They're handles, which
 // are like ID cards that FreeRTOS gives you to refer to something it created.
@@ -89,13 +85,11 @@ static void applyCommand(LightState &state, const Command_t &command)
 {
     if (command.type == COMMAND_LIGHT) {
         state.apply(command.light, nowMs());
-    } else if (command.twinkle.index < TWINKLE_COUNT) {
+    } else {
         // Twinkles really are this simple: set a pin and make a note of it. It takes no
-        // time, and it has nothing to do with whatever the ring is doing. The bounds check
-        // is there because index is used to read an array, and going past the end of an
-        // array is one of the easiest ways to crash in C++.
-        gpio_set_level(TWINKLE_PINS[command.twinkle.index], command.twinkle.on ? 1 : 0);
-        state.setTwinkle(command.twinkle.index, command.twinkle.on);
+        // time, and it has nothing to do with whatever the ring is doing.
+        gpio_set_level(TWINKLE_GPIO, command.twinkle.on ? 1 : 0);
+        state.setTwinkle(command.twinkle.on);
     }
 }
 
@@ -209,20 +203,22 @@ static void statusTask(void *parameter)
 
 void lightsStart(void)
 {
-    gpio_config_t twinkleConfig = {};
-    twinkleConfig.mode = GPIO_MODE_OUTPUT;
+    gpio_config_t outputConfig = {};
+    outputConfig.mode = GPIO_MODE_OUTPUT;
 
-    // The level gets set before the pin becomes an output, so that it starts low
-    // instead of possibly flashing on. pin_bit_mask has one bit per pin, and 1ULL is
-    // a 64 bit 1, because 32 bits wouldn't reach GPIO 32 and 33.
-    for (uint8_t i = 0; i < TWINKLE_COUNT; i++) {
-        gpio_set_level(TWINKLE_PINS[i], 0);
-        twinkleConfig.pin_bit_mask |= 1ULL << TWINKLE_PINS[i];
-    }
+    // The levels get set before the pins become outputs, so that they start low instead
+    // of possibly flashing on. Low on the power pin cuts the power to the NeoPixel on the
+    // board, which is what keeps it dark. Nothing else ever touches that pin.
+    gpio_set_level(TWINKLE_GPIO, 0);
+    gpio_set_level(BOARD_PIXEL_POWER_GPIO, 0);
+
+    // pin_bit_mask has one bit per pin, and 1ULL is a 64 bit 1, because 32 bits wouldn't
+    // reach GPIO 32 and 33.
+    outputConfig.pin_bit_mask = (1ULL << TWINKLE_GPIO) | (1ULL << BOARD_PIXEL_POWER_GPIO);
 
     // ESP_ERROR_CHECK stops and reboots the device if the call failed. That's the right
     // choice for a setup step that should never fail.
-    ESP_ERROR_CHECK(gpio_config(&twinkleConfig));
+    ESP_ERROR_CHECK(gpio_config(&outputConfig));
 
     commandQueue = xQueueCreate(COMMAND_QUEUE_LENGTH, sizeof(Command_t));
 
