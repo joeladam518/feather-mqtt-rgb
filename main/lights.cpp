@@ -1,3 +1,24 @@
+// lights.cpp: the two tasks that run the lights and report on them.
+//
+// A quick FreeRTOS refresher, since this file is all about it:
+//
+//   Task          A function that runs forever, side by side with other tasks. Each has
+//                 its own stack, its own priority, and here, its own CPU core.
+//   Blocking      A task that's waiting uses no CPU. FreeRTOS wakes it up when whatever
+//                 it's waiting for happens. It's the opposite of polling in a loop.
+//   Queue         A safe way to pass data between tasks. Items are copied in, and copied
+//                 out again in the same order.
+//   Notification  A lightweight way to poke one specific task and say "something happened".
+//
+// How data flows through this file:
+//
+//   mqtt.cpp --lightsSend()--> commandQueue --> lightsTask --> ring and pins
+//                                                  |
+//                         statusTask <-- statusSlot
+//                             |
+//                             v
+//                          mqtt.cpp
+
 #include "config.h"
 #include "lights.h"
 
@@ -15,9 +36,12 @@
 #include "mqtt.h"
 #include "NeoPixelRing.h"
 
+// How many commands can be waiting. Commands are applied in microseconds, so in practice
+// this rarely holds more than one. It only needs room for a burst.
 #define COMMAND_QUEUE_LENGTH 16
 
-// Notification bits for the status task
+// Notification bits for the status task. (1 << 2) means "1 shifted left twice", which is
+// binary 100. Each bit is its own flag, so several can be set at once and none get lost.
 #define STATUS_CHANGED     (1 << 0)
 #define STATUS_ANNOUNCE    (1 << 1)
 #define STATUS_ANNOUNCE_HA (1 << 2)
@@ -26,14 +50,19 @@
 #define ANNOUNCE_DELAY_MS 1000
 #define ANNOUNCE_JITTER_MS 1000
 
+// The label on this file's log lines
 static const char *TAG = "LIGHTS";
 
+// The pins in an array, so that a twinkle's index can be used to look up its pin.
+// The (gpio_num_t) casts are needed because config.h has them as plain numbers.
 static const gpio_num_t TWINKLE_PINS[TWINKLE_COUNT] = {
     (gpio_num_t)TW1_PIN,
     (gpio_num_t)TW2_PIN,
     (gpio_num_t)TW3_PIN,
 };
 
+// "static" here means these variables are private to this file. They're handles, which
+// are like ID cards that FreeRTOS gives you to refer to something it created.
 static QueueHandle_t commandQueue = NULL;
 static QueueHandle_t statusSlot = NULL;
 static TaskHandle_t statusTaskHandle = NULL;
@@ -41,6 +70,9 @@ static TaskHandle_t statusTaskHandle = NULL;
 //==============================================================================
 // Helpers
 
+// Milliseconds since boot. esp_timer_get_time returns microseconds, so divide by 1000.
+// Cutting it down to 32 bits means it wraps around after about 49.7 days, and
+// LightState's math is written to cope with that.
 static uint32_t nowMs(void)
 {
     return (uint32_t)(esp_timer_get_time() / 1000);
@@ -51,11 +83,17 @@ static bool sameColor(RGB_t a, RGB_t b)
     return a.r == b.r && a.g == b.g && a.b == b.b;
 }
 
+// LightState &state is a reference, so this works on the lightsTask's actual state and
+// not on a copy of it.
 static void applyCommand(LightState &state, const Command_t &command)
 {
     if (command.type == COMMAND_LIGHT) {
         state.apply(command.light, nowMs());
     } else if (command.twinkle.index < TWINKLE_COUNT) {
+        // Twinkles really are this simple: set a pin and make a note of it. It takes no
+        // time, and it has nothing to do with whatever the ring is doing. The bounds check
+        // is there because index is used to read an array, and going past the end of an
+        // array is one of the easiest ways to crash in C++.
         gpio_set_level(TWINKLE_PINS[command.twinkle.index], command.twinkle.on ? 1 : 0);
         state.setTwinkle(command.twinkle.index, command.twinkle.on);
     }
@@ -83,8 +121,13 @@ static void reportAnnouncement(void)
 // a command never has to wait for an animation to finish.
 //
 // It must never call into mqtt, see the status task below.
+//
+// Your original idea was right: network work on one core, lights on the other. This is
+// that idea, with one task on this side instead of two, because a single owner needs no
+// mutex. Tasks take a void * parameter because FreeRTOS requires it, and this one's unused.
 static void lightsTask(void *parameter)
 {
+    // These live on this task's stack, so no other code can even reach them
     NeoPixelRing ring;
     LightState state;
     Command_t command;
@@ -93,20 +136,33 @@ static void lightsTask(void *parameter)
     // Started here so the ring's interrupt stays on this core, away from wifi
     ring.begin();
 
+    // A task must never return, so it's always a forever loop
     while (1) {
+        // This one line is what the whole design rests on. xQueueReceive sleeps until a
+        // command arrives, or until this timeout runs out, whichever comes first.
+        //   Animating:     wait one frame at most, then draw the next frame
+        //   Not animating: portMAX_DELAY means wait forever, nothing needs doing
         TickType_t wait = state.isAnimating() ? pdMS_TO_TICKS(FRAME_MS) : portMAX_DELAY;
 
         if (xQueueReceive(commandQueue, &command, wait) == pdTRUE) {
-            // Take everything that's waiting, so a burst only draws one frame
+            // Take everything that's waiting, so a burst only draws one frame.
+            // A do/while runs its body once before checking, and that first pass handles
+            // the command that was just received. The timeout of 0 means don't wait.
             do {
                 applyCommand(state, command);
             } while (xQueueReceive(commandQueue, &command, 0) == pdTRUE);
 
+            // Tell the status task about the new state. xQueueOverwrite replaces whatever
+            // is in the slot and never waits, so an old state nobody has sent yet gets
+            // replaced by the newest one. xTaskNotify then wakes the status task up.
             LightStatus_t status = state.status();
             xQueueOverwrite(statusSlot, &status);
             xTaskNotify(statusTaskHandle, STATUS_CHANGED, eSetBits);
         }
 
+        // This runs after every wakeup, command or not. It's where the animation advances.
+        // Skipping the write when the color hasn't changed saves talking to the ring for
+        // nothing. The slow loop often lands on the same color two frames in a row.
         RGB_t next = state.render(nowMs());
         if (!sameColor(next, shown)) {
             ring.show(next);
@@ -125,8 +181,12 @@ static void statusTask(void *parameter)
     LightStatus_t status;
 
     while (1) {
+        // Sleeps until something sets a notification bit. The 0 means don't clear any bits
+        // on the way in, and UINT32_MAX means clear them all on the way out. Whatever was
+        // set ends up in bits.
         xTaskNotifyWait(0, UINT32_MAX, &bits, portMAX_DELAY);
 
+        // & tests a single flag out of the bits
         if (bits & STATUS_ANNOUNCE_HA) {
             vTaskDelay(pdMS_TO_TICKS(ANNOUNCE_DELAY_MS + esp_random() % ANNOUNCE_JITTER_MS));
         }
@@ -135,6 +195,9 @@ static void statusTask(void *parameter)
             reportAnnouncement();
         }
 
+        // Peek reads the slot without emptying it, so the latest state is always there.
+        // If the state changed five times while this task was stuck, it only sends the
+        // newest one, which is exactly what you want from a status report.
         if (xQueuePeek(statusSlot, &status, 0) == pdTRUE) {
             reportStatus(&status);
         }
@@ -149,21 +212,35 @@ void lightsStart(void)
     gpio_config_t twinkleConfig = {};
     twinkleConfig.mode = GPIO_MODE_OUTPUT;
 
+    // The level gets set before the pin becomes an output, so that it starts low
+    // instead of possibly flashing on. pin_bit_mask has one bit per pin, and 1ULL is
+    // a 64 bit 1, because 32 bits wouldn't reach GPIO 32 and 33.
     for (uint8_t i = 0; i < TWINKLE_COUNT; i++) {
         gpio_set_level(TWINKLE_PINS[i], 0);
         twinkleConfig.pin_bit_mask |= 1ULL << TWINKLE_PINS[i];
     }
 
+    // ESP_ERROR_CHECK stops and reboots the device if the call failed. That's the right
+    // choice for a setup step that should never fail.
     ESP_ERROR_CHECK(gpio_config(&twinkleConfig));
 
     commandQueue = xQueueCreate(COMMAND_QUEUE_LENGTH, sizeof(Command_t));
+
+    // A queue with one space is what makes xQueueOverwrite usable, it's only allowed
+    // on queues of length 1. It works as a mailbox that always holds the latest value.
     statusSlot = xQueueCreate(1, sizeof(LightStatus_t));
+
+    // configASSERT stops the device if this is false, which here means we ran out of memory
     configASSERT(commandQueue && statusSlot);
 
+    // Put the starting state in the mailbox, so there's something to report on the
+    // first connection even if no command has ever arrived
     LightState initial;
     LightStatus_t status = initial.status();
     xQueueOverwrite(statusSlot, &status);
 
+    // The status task has to exist first, because the lights task sends it notifications.
+    // PRO_CPU_NUM is core 0 and APP_CPU_NUM is core 1. Higher priority numbers run first.
     BaseType_t created = xTaskCreatePinnedToCore(
         statusTask,        // Function to be called
         "status",          // Name of task
@@ -187,6 +264,9 @@ void lightsStart(void)
     configASSERT(created == pdPASS);
 }
 
+// The timeout of 0 is the important part. The old code waited forever here, and that froze
+// the MQTT task whenever a fade filled the queue. Dropping a command is a much smaller
+// problem than losing the connection.
 bool lightsSend(const Command_t *command)
 {
     if (xQueueSend(commandQueue, command, 0) != pdTRUE) {
@@ -197,6 +277,7 @@ bool lightsSend(const Command_t *command)
     return true;
 }
 
+// eSetBits adds to any bits already set, so a request can't wipe out an earlier one
 void lightsRequestAnnouncement(bool delayed)
 {
     xTaskNotify(statusTaskHandle, delayed ? STATUS_ANNOUNCE_HA : STATUS_ANNOUNCE, eSetBits);

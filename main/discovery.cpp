@@ -1,3 +1,23 @@
+// discovery.cpp: builds the message that sets the device up in Home Assistant.
+//
+// Instead of you writing YAML by hand, the device describes itself: "I'm a device with one
+// light and three switches, and here are their topics". Home Assistant reads that and
+// creates all the entities. It's one big JSON message, and this is what it looks like,
+// shortened:
+//
+//   {
+//     "dev":  {"ids":"rgb_tree", "name":"RGB Tree", ...},   the device itself
+//     "o":    {"name":"feather-mqtt-rgb-tree", ...},        what software sent this
+//     "cmps": {                                             its components, or entities
+//       "ring": {"p":"light", "schema":"json", ...},
+//       "tw1":  {"p":"switch", ...},
+//       ...
+//     }
+//   }
+//
+// This file is separate from commands.cpp because it's only about Home Assistant. Nothing
+// else would need it if the device were controlled in some other way.
+
 #include "config.h"
 #include "discovery.h"
 
@@ -6,6 +26,8 @@
 #include "commands.h"
 #include "topics.h"
 
+// The name and id of each switch. These are arrays of constants so that the loop below
+// has strings that stay around, without having to build them while running.
 static const char *const TWINKLE_KEYS[TWINKLE_COUNT] = {"tw1", "tw2", "tw3"};
 static const char *const TWINKLE_NAMES[TWINKLE_COUNT] = {"Twinkle 1", "Twinkle 2", "Twinkle 3"};
 static const char *const TWINKLE_IDS[TWINKLE_COUNT] = {DEVICE_ID "_tw1", DEVICE_ID "_tw2", DEVICE_ID "_tw3"};
@@ -15,18 +37,24 @@ size_t serializeDiscovery(char *output, size_t size)
 {
     JsonDocument doc;
 
+    // The physical device. In Home Assistant, every entity below gets grouped under this.
+    // "ids" is what identifies the device, and the others are just what it displays.
     JsonObject device = doc["dev"].to<JsonObject>();
     device["ids"] = DEVICE_ID;
     device["name"] = DEVICE_NAME;
     device["mf"] = "Adafruit";
     device["mdl"] = "HUZZAH32 ESP32 Feather";
 
+    // The software that's sending this, which the docs require for device discovery
     JsonObject origin = doc["o"].to<JsonObject>();
     origin["name"] = "feather-mqtt-rgb-tree";
     origin["url"] = "https://github.com/joeladam518/feather-mqtt-rgb-tree";
 
     JsonObject components = doc["cmps"].to<JsonObject>();
 
+    // The NeoPixel ring, as a light. Each of these options is what makes a control appear
+    // in Home Assistant: brightness makes the slider, and effect makes the effect list.
+    // "schema": "json" picks the JSON message format that commands.cpp reads and writes.
     JsonObject light = components["ring"].to<JsonObject>();
     light["p"] = "light";
     light["name"] = "Ring";
@@ -40,10 +68,13 @@ size_t serializeDiscovery(char *output, size_t size)
     light["effect"] = true;
     light["supported_color_modes"].to<JsonArray>().add("rgb");
 
+    // These names have to match what parseEffect in commands.cpp accepts
     JsonArray effects = light["effect_list"].to<JsonArray>();
     effects.add("colorloop");
     effects.add("solid");
 
+    // The 3 LED outputs, as switches. Switches use ON and OFF by default, which is what
+    // parseOnOff in commands.cpp expects.
     for (uint8_t i = 0; i < TWINKLE_COUNT; i++) {
         JsonObject twinkle = components[TWINKLE_KEYS[i]].to<JsonObject>();
         twinkle["p"] = "switch";
@@ -54,6 +85,7 @@ size_t serializeDiscovery(char *output, size_t size)
         twinkle["availability_topic"] = TOPIC_AVAILABILITY;
     }
 
+    // Better to send nothing than JSON that got cut off halfway
     if (measureJson(doc) >= size) {
         return 0;
     }

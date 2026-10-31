@@ -1,3 +1,9 @@
+// NeoPixelRing.h: a thin wrapper around the NeoPixel hardware.
+//
+// All this knows how to do is put one color on the whole ring, right now. It has no idea
+// about fades or loops, those live in LightState. The old version did the animating
+// here, and that's what made it impossible to interrupt.
+
 #pragma once
 
 #include <led_strip.h>
@@ -6,6 +12,7 @@
 class NeoPixelRing
 {
 private:
+    // The handle for Espressif's led_strip driver
     led_strip_handle_t strip;
 
 public:

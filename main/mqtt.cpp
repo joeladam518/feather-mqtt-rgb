@@ -1,3 +1,19 @@
+// mqtt.cpp: gets messages in from the broker and our state back out.
+//
+// A quick MQTT refresher: devices don't talk to each other directly. They all connect to
+// a broker, publish messages to named topics, and subscribe to the topics they care about.
+//
+//   QoS 0      At most once. It's sent, with no check that it arrived.
+//   QoS 1      At least once. It's resent until it's acknowledged.
+//   Retained   The broker keeps the last message on a topic, and gives it to anyone who
+//              subscribes later. That's how an app knows the state without having to ask.
+//   Last Will  A message the broker publishes for you when you vanish without saying
+//              goodbye. A device that lost power can't say it's going offline, so it tells
+//              the broker what to say ahead of time.
+//
+// Incoming messages arrive through eventHandler, at the bottom of the "Incoming messages"
+// section. It's a good place to start reading.
+
 #include "config.h"
 #include "mqtt.h"
 
@@ -21,6 +37,8 @@
 // How quickly the broker notices we're gone and announces it for us
 #define KEEPALIVE_SECONDS 30
 
+// The outgoing buffer has to be big enough for the discovery message, which is
+// much bigger than anything else we send
 #define INCOMING_BUFFER_SIZE 2048
 #define OUTGOING_BUFFER_SIZE (DISCOVERY_PAYLOAD_MAX + 512)
 
@@ -28,22 +46,31 @@
 
 static const char *TAG = "MQTT";
 
+// "const char *const" means the pointer can't change, and neither can the text it points to
 static const char *const PAYLOAD_ONLINE = "online";
 static const char *const PAYLOAD_OFFLINE = "offline";
 
+// The handle for our connection to the broker
 static esp_mqtt_client_handle_t client = NULL;
 
 // Only the status task publishes this. It's too big to want on a task's stack.
+//
+// A variable like this that lives outside any function gets its memory set aside when
+// the firmware is built, instead of using up space on a task's limited stack.
 static char discoveryPayload[DISCOVERY_PAYLOAD_MAX];
 
 //==============================================================================
 // Incoming messages
 
+// Note the "= {}" and the type on each of these. The union in Command_t means the type field
+// is what tells the lights task which part to read, so it has to be set correctly.
 static void handleLightCommand(const char *payload, size_t length)
 {
     Command_t command = {};
     command.type = COMMAND_LIGHT;
 
+    // %.*s prints exactly this many characters. Plain %s would read until it found a NUL
+    // terminator, and payloads don't have one.
     if (!parseLightCommand(payload, length, &command.light)) {
         ESP_LOGW(TAG, "Ignoring invalid light command: %.*s", (int)length, payload);
         return;
@@ -66,6 +93,9 @@ static void handleTwinkleCommand(uint8_t index, const char *payload, size_t leng
     lightsSend(&command);
 }
 
+// Home Assistant publishes "online" here every time it starts. It might have forgotten us
+// while it was down, so we announce ourselves again. topicEquals is just a comparison of
+// text with a length, so it works on this payload as well as on topics.
 static void handleHomeAssistantStatus(const char *payload, size_t length)
 {
     if (topicEquals(PAYLOAD_ONLINE, payload, length)) {
@@ -73,6 +103,7 @@ static void handleHomeAssistantStatus(const char *payload, size_t length)
     }
 }
 
+// Works out which topic a message arrived on, and passes it along
 static void handleData(esp_mqtt_event_handle_t event)
 {
     // A message too big for the buffer arrives in pieces. Nothing we accept is that big.
@@ -103,6 +134,7 @@ static void handleData(esp_mqtt_event_handle_t event)
     ESP_LOGW(TAG, "Unhandled topic: %.*s", event->topic_len, event->topic);
 }
 
+// Subscriptions are gone after a disconnect, so this runs on every connection
 static void subscribeAll(void)
 {
     esp_mqtt_client_subscribe(client, TOPIC_LIGHT_SET, QOS_AT_LEAST_ONCE);
@@ -115,6 +147,10 @@ static void subscribeAll(void)
 
 // This runs on the mqtt task, so nothing in here is allowed to wait. If it blocks,
 // keepalives stop and the broker disconnects us.
+//
+// The MQTT library calls this for everything that happens: connecting, messages arriving,
+// errors. eventData is a void *, which is a pointer to "something". The library promises
+// it's an MQTT event, so the first line casts it back to that type.
 static void eventHandler(void *handlerArgs, esp_event_base_t base, int32_t eventId, void *eventData)
 {
     esp_mqtt_event_handle_t event = (esp_mqtt_event_handle_t)eventData;
@@ -123,9 +159,12 @@ static void eventHandler(void *handlerArgs, esp_event_base_t base, int32_t event
         case MQTT_EVENT_CONNECTED:
             ESP_LOGI(TAG, "Connected");
             subscribeAll();
+
+            // Don't publish from here, leave that to the status task
             lightsRequestAnnouncement(false);
             break;
         case MQTT_EVENT_DISCONNECTED:
+            // The library reconnects by itself, so there's nothing to do
             ESP_LOGW(TAG, "Disconnected");
             break;
         case MQTT_EVENT_DATA:
@@ -148,16 +187,21 @@ static void eventHandler(void *handlerArgs, esp_event_base_t base, int32_t event
 
 void mqttStart(void)
 {
+    // = {} zeroes everything, so anything not set here uses the library's default
     esp_mqtt_client_config_t config = {};
     config.broker.address.hostname = MQTT_BROKER;
     config.broker.address.transport = MQTT_TRANSPORT_OVER_TCP;
     config.broker.address.port = MQTT_PORT;
     config.credentials.client_id = DEVICE_ID;
     config.session.keepalive = KEEPALIVE_SECONDS;
+
+    // If we disappear, the broker publishes "offline" to the availability topic for us.
+    // It's retained, so anyone who subscribes later sees that we're offline too.
     config.session.last_will.topic = TOPIC_AVAILABILITY;
     config.session.last_will.msg = PAYLOAD_OFFLINE;
     config.session.last_will.qos = QOS_AT_LEAST_ONCE;
     config.session.last_will.retain = RETAIN;
+
     config.task.priority = 5;
     config.task.stack_size = 6144;
     config.buffer.size = INCOMING_BUFFER_SIZE;
@@ -172,10 +216,14 @@ void mqttStart(void)
     client = esp_mqtt_client_init(&config);
     configASSERT(client);
 
+    // Tell the library to call eventHandler for every kind of event, then start it.
+    // This returns right away. The connecting happens on the library's own task.
     ESP_ERROR_CHECK(esp_mqtt_client_register_event(client, MQTT_EVENT_ANY, eventHandler, NULL));
     ESP_ERROR_CHECK(esp_mqtt_client_start(client));
 }
 
+// Publishes everything every time, and that's fine. It's four small messages, and it only
+// happens when something changes. Passing a length of 0 means "use the string's length".
 void mqttPublishStatus(const LightStatus_t *status)
 {
     char payload[STATUS_PAYLOAD_MAX];
@@ -192,6 +240,10 @@ void mqttPublishStatus(const LightStatus_t *status)
     }
 }
 
+// Says that we're online and tells Home Assistant what we are.
+//
+// Discovery isn't retained. Home Assistant's docs prefer sending it when they ask (see
+// handleHomeAssistantStatus), because retained discovery can leave behind ghost devices.
 void mqttPublishAnnouncement(void)
 {
     esp_mqtt_client_publish(client, TOPIC_AVAILABILITY, PAYLOAD_ONLINE, 0, QOS_AT_LEAST_ONCE, RETAIN);

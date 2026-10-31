@@ -1,3 +1,6 @@
+# The settings for this board. sdkconfig gets generated from this on the first build,
+# so after changing anything here, delete sdkconfig and build again.
+
 # Adafruit HUZZAH32 ESP32 Feather
 CONFIG_IDF_TARGET="esp32"
 CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y

@@ -1,8 +1,11 @@
+// discovery.h: the message that tells Home Assistant what this device is.
+
 #pragma once
 
 #include <stddef.h>
 
-// Largest Home Assistant discovery message we expect to send
+// Largest Home Assistant discovery message we expect to send.
+// The real message is around 1 KB, and the tests print its exact size.
 #define DISCOVERY_PAYLOAD_MAX 3072
 
 // Returns the number of bytes written, or 0 if it didn't fit

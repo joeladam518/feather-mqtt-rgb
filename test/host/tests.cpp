@@ -1,4 +1,11 @@
 // Tests the logic that doesn't need a board. Run with scripts/test-host.sh
+//
+// These run on your computer, using made up times, so a minute of pretend time takes
+// no time at all. That's the payoff of LightState taking the time as a parameter.
+//
+// There's no test framework, just the CHECK macro below. Each test sets something up,
+// sends commands with send(), and checks what render() gives back. A test named in
+// main() at the bottom is what makes it run, so a new test has to be added there.
 
 #include <stdio.h>
 #include <string.h>
@@ -11,9 +18,13 @@
 #include "LightState.h"
 #include "topics.h"
 
+// Counts instead of stopping, so that one run shows every failure at once
 static int failures = 0;
 static int checks = 0;
 
+// A macro instead of a function, because it needs #condition (the code itself, as text),
+// __func__, and __LINE__ to print exactly where a failure happened. The do/while(0) is
+// the standard way to make a multi line macro act like a single statement.
 #define CHECK(condition) do { \
     checks++; \
     if (!(condition)) { \
@@ -30,6 +41,7 @@ static bool same(RGB_t a, RGB_t b)
     return a.r == b.r && a.g == b.g && a.b == b.b;
 }
 
+// Parses JSON that's supposed to be valid, so a bad test can't quietly pass
 static LightCommand_t parse(const char *json)
 {
     LightCommand_t command = {};
@@ -44,6 +56,7 @@ static bool rejects(const char *json)
     return !parseLightCommand(json, strlen(json), &command);
 }
 
+// Does what the firmware does with a message: parse it, then apply it at this time
 static void send(LightState &state, const char *json, uint32_t nowMs)
 {
     state.apply(parse(json), nowMs);
@@ -60,6 +73,7 @@ static const char *START_LOOP = "{\"effect\":\"colorloop\"}";
 //==============================================================================
 // The three things the device has to do
 
+// After a reboot everything is off, and there's nothing to animate.
 static void test_starts_off(void)
 {
     LightState state;
@@ -68,6 +82,7 @@ static void test_starts_off(void)
     CHECK(!state.isAnimating());
 }
 
+// With no transition, a color appears on the very next frame.
 static void test_color_shows_immediately_without_transition(void)
 {
     LightState state;
@@ -77,6 +92,7 @@ static void test_color_shows_immediately_without_transition(void)
     CHECK(!state.isAnimating());
 }
 
+// Requirement 3: the loop keeps moving through colors and never ends by itself.
 static void test_loop_keeps_changing_color(void)
 {
     LightState state;
@@ -93,6 +109,7 @@ static void test_loop_keeps_changing_color(void)
     CHECK(state.isAnimating());
 }
 
+// One full cycle later the loop is back on exactly the same color.
 static void test_loop_comes_back_around(void)
 {
     LightState state;
@@ -100,6 +117,7 @@ static void test_loop_comes_back_around(void)
     CHECK(same(state.render(2000), state.render(2000 + LOOP_CYCLE_MS)));
 }
 
+// Requirement: a color has to stop the loop straight away, and for good.
 static void test_color_breaks_the_loop(void)
 {
     LightState state;
@@ -115,6 +133,8 @@ static void test_color_breaks_the_loop(void)
     CHECK(same(state.render(60000), BLUE));
 }
 
+// A color with a transition also stops the loop, and fades from the loop's current color
+// instead of jumping.
 static void test_color_with_transition_breaks_the_loop_smoothly(void)
 {
     LightState state;
@@ -128,6 +148,9 @@ static void test_color_with_transition_breaks_the_loop_smoothly(void)
     CHECK(!state.isAnimating());
 }
 
+// Requirement: LED commands can't disturb the loop. This runs two copies side by side,
+// flips LEDs on one of them for a minute of pretend time, and checks that every single
+// frame matches the copy that wasn't touched.
 static void test_twinkles_leave_the_loop_alone(void)
 {
     LightState withTwinkles;
@@ -146,6 +169,7 @@ static void test_twinkles_leave_the_loop_alone(void)
     CHECK(withTwinkles.status().effect == EFFECT_COLORLOOP);
 }
 
+// Each LED output is separate, and the ring turning off doesn't affect them.
 static void test_twinkles_are_independent(void)
 {
     LightState state;
@@ -165,6 +189,7 @@ static void test_twinkles_are_independent(void)
 //==============================================================================
 // Fades
 
+// Halfway through the time means halfway to the color, and it ends exactly on it.
 static void test_fade_reaches_the_halfway_point(void)
 {
     LightState state;
@@ -175,6 +200,8 @@ static void test_fade_reaches_the_halfway_point(void)
     CHECK(!state.isAnimating());
 }
 
+// Fades go by the clock, so a frame that's very late can't stretch the fade.
+// The old code counted steps, so anything that delayed it made the fade longer.
 static void test_fade_length_survives_late_frames(void)
 {
     LightState state;
@@ -186,6 +213,7 @@ static void test_fade_length_survives_late_frames(void)
     CHECK(!state.isAnimating());
 }
 
+// A new fade picks up from whatever is on the ring, so nothing jumps.
 static void test_new_color_during_a_fade_starts_from_what_is_showing(void)
 {
     LightState state;
@@ -198,6 +226,7 @@ static void test_new_color_during_a_fade_starts_from_what_is_showing(void)
     CHECK(same(state.render(3000), RGB_t{0, 0, 200}));
 }
 
+// The loop eases in from the current color instead of snapping to red.
 static void test_starting_the_loop_does_not_jump(void)
 {
     LightState state;
@@ -209,6 +238,7 @@ static void test_starting_the_loop_does_not_jump(void)
 //==============================================================================
 // On, off, and brightness
 
+// Turning off remembers the color, and turning on brings it back.
 static void test_off_then_on_restores_color(void)
 {
     LightState state;
@@ -221,6 +251,7 @@ static void test_off_then_on_restores_color(void)
     CHECK(same(state.render(200), RED));
 }
 
+// The same goes for the loop.
 static void test_off_then_on_restores_the_loop(void)
 {
     LightState state;
@@ -235,6 +266,7 @@ static void test_off_then_on_restores_the_loop(void)
     CHECK(state.status().on);
 }
 
+// Asking for the loop should show the loop, even if the ring was off.
 static void test_effect_turns_the_ring_on(void)
 {
     LightState state;
@@ -242,6 +274,7 @@ static void test_effect_turns_the_ring_on(void)
     CHECK(state.status().on);
 }
 
+// "solid" stops the loop and goes back to the last color that was set.
 static void test_solid_stops_the_loop_and_keeps_the_color(void)
 {
     LightState state;
@@ -252,6 +285,7 @@ static void test_solid_stops_the_loop_and_keeps_the_color(void)
     CHECK(same(state.render(5000), RED));
 }
 
+// Moving a brightness slider dims the loop without stopping it.
 static void test_brightness_keeps_the_loop_running(void)
 {
     LightState state;
@@ -264,6 +298,7 @@ static void test_brightness_keeps_the_loop_running(void)
     CHECK(frame.r <= 100 && frame.g <= 100 && frame.b <= 100);
 }
 
+// Brightness dims what's shown, but the stored color doesn't change.
 static void test_brightness_scales_color(void)
 {
     LightState state;
@@ -273,6 +308,7 @@ static void test_brightness_scales_color(void)
     CHECK(same(state.status().color, RED));
 }
 
+// Moving a brightness slider won't turn on a ring that's off.
 static void test_brightness_does_not_turn_the_ring_on(void)
 {
     LightState state;
@@ -280,6 +316,8 @@ static void test_brightness_does_not_turn_the_ring_on(void)
     CHECK(!state.status().on);
 }
 
+// The millisecond clock wraps back to 0 every 49.7 days, so this starts a fade just
+// before that point. If the math were wrong, the fade would break after running for weeks.
 static void test_clock_rollover(void)
 {
     LightState state;
@@ -292,6 +330,7 @@ static void test_clock_rollover(void)
 //==============================================================================
 // Parsing
 
+// Every key at once, in the format Home Assistant sends.
 static void test_parses_a_full_home_assistant_command(void)
 {
     LightCommand_t command = parse(
@@ -306,6 +345,7 @@ static void test_parses_a_full_home_assistant_command(void)
     CHECK(command.hasEffect && command.effect == EFFECT_COLORLOOP);
 }
 
+// Empty is valid, and the has... flags show that nothing was mentioned.
 static void test_missing_keys_are_not_set(void)
 {
     LightCommand_t command = parse("{}");
@@ -316,6 +356,7 @@ static void test_missing_keys_are_not_set(void)
     CHECK(!command.hasEffect);
 }
 
+// Everything here must be turned away. Network input can be anything at all.
 static void test_rejects_bad_payloads(void)
 {
     CHECK(rejects(""));
@@ -337,6 +378,8 @@ static void test_rejects_bad_payloads(void)
     CHECK(rejects("{\"effect\":1}"));
 }
 
+// The old code had an off by one bug at exactly this boundary. A payload of the maximum
+// size has no NUL terminator, and the parser has to stop at the length regardless.
 static void test_payload_size_limit(void)
 {
     char payload[COMMAND_PAYLOAD_MAX + 2];
@@ -356,6 +399,7 @@ static void test_payload_size_limit(void)
     CHECK(!parseLightCommand(payload, COMMAND_PAYLOAD_MAX + 1, &command));
 }
 
+// The plain payload the LED outputs use. It's an exact match only, even for case.
 static void test_on_off(void)
 {
     bool on = false;
@@ -372,6 +416,7 @@ static void test_on_off(void)
 //==============================================================================
 // Topics
 
+// The old prefix matching bug: a topic mustn't match one that it's only the start of.
 static void test_topics_match_exactly(void)
 {
     const char *topic = TOPIC_LIGHT_SET;
@@ -390,6 +435,7 @@ static void test_topics_match_exactly(void)
 //==============================================================================
 // What we send out
 
+// Parses our own output back to check the shape that Home Assistant needs.
 static void test_status_is_what_home_assistant_expects(void)
 {
     LightStatus_t status = {};
@@ -412,6 +458,7 @@ static void test_status_is_what_home_assistant_expects(void)
     CHECK(doc["color"]["b"] == 3);
 }
 
+// What we publish can be read back by our own parser and gives the same values.
 static void test_status_round_trips_through_the_parser(void)
 {
     LightStatus_t status = {};
@@ -429,6 +476,7 @@ static void test_status_round_trips_through_the_parser(void)
     CHECK(command.brightness == 42);
 }
 
+// If it won't fit, send nothing instead of JSON that got cut off.
 static void test_status_refuses_a_small_buffer(void)
 {
     LightStatus_t status = {};
@@ -436,6 +484,8 @@ static void test_status_refuses_a_small_buffer(void)
     CHECK(serializeLightStatus(&status, output, sizeof(output)) == 0);
 }
 
+// Checks that the discovery message has what Home Assistant's docs require. This can't
+// prove Home Assistant accepts it, only a real install can do that.
 static void test_discovery(void)
 {
     static char output[DISCOVERY_PAYLOAD_MAX];
