@@ -277,22 +277,6 @@ mosquitto_pub -h <broker> -t rgb_tree/light/set -m '{"state":"ON"}'
 mosquitto_sub -h <broker> -v -t 'rgb_tree/#'
 ```
 
-## Updating an app from the old format
-
-The old topics and payloads are gone. An app using them will stop working until it's updated.
-
-| Old | New |
-|---|---|
-| `SUB_SET_COLOR` with `{"r":255,"g":0,"b":0}` | `<base>/light/set` with `{"color":{"r":255,"g":0,"b":0}}` |
-| `"time": 100` (counted 10 ms steps, so 1 second) | `"transition": 1` (seconds) |
-| `SUB_GET_COLOR`, then read `PUB_GET_COLOR` | Subscribe to `<base>/light/state`, it's retained and updates itself |
-| `SUB_SET_TW_LIGHTS` with `{"tw1":1}` | `ON` or `OFF` to `<base>/twinkle/set` |
-| `SUB_GET_TW_LIGHTS`, then read `PUB_GET_TW_LIGHTS` | Subscribe to `<base>/twinkle/state` |
-| Nothing | Start the loop with `{"effect":"colorloop"}` |
-| Nothing | Subscribe to `<base>/availability` to see if the device is online |
-
-Your app should subscribe to the `state` topics and update its display from them, not assume a command worked.
-
 ## Home Assistant
 
 The device announces itself using
