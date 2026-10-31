@@ -1,8 +1,11 @@
 idf_component_register(
     SRCS
-        "debug.cpp"
+        "commands.cpp"
+        "discovery.cpp"
+        "lights.cpp"
+        "LightState.cpp"
         "main.cpp"
-        "MqttEventProcessing.cpp"
+        "mqtt.cpp"
         "NeoPixelRing.cpp"
         "wifi.cpp"
     INCLUDE_DIRS "include"
@@ -10,6 +13,7 @@ idf_component_register(
         esp_driver_gpio
         esp_event
         esp_netif
+        esp_timer
         esp_wifi
         nvs_flash
 )

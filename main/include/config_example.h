@@ -1,11 +1,4 @@
-#ifndef __RGB_TREE_CONFIG_H__
-#define __RGB_TREE_CONFIG_H__
-
-#include <soc/soc.h>
-
-// Debug
-#define DEBUG false // This will trigger other library's debug functionality
-#define APP_DEBUG false
+#pragma once
 
 // Wifi
 #define WLAN_SSID ""
@@ -13,19 +6,14 @@
 
 // MQTT
 #define MQTT_BROKER "0.0.0.0"
-#define MQTT_PORT   1883 // Use 8883 for SSL
-#define MQTT_USER   ""
+#define MQTT_PORT   1883
+#define MQTT_USER   "" // Leave empty if your broker doesn't need a login
 #define MQTT_PASS   ""
 
-// Subscription Topics
-#define SUB_GET_COLOR     ""
-#define SUB_SET_COLOR     ""
-#define SUB_GET_TW_LIGHTS ""
-#define SUB_SET_TW_LIGHTS ""
-
-// Publish Topics
-#define PUB_GET_COLOR     ""
-#define PUB_GET_TW_LIGHTS ""
+// Device
+#define DEVICE_ID   "rgb_tree"   // Letters, numbers, and underscores. Must be unique on your broker.
+#define DEVICE_NAME "RGB Tree"   // What Home Assistant calls it
+#define TOPIC_BASE  "rgb_tree"   // Every topic starts with this
 
 // pins
 #define TW1_PIN 33
@@ -34,4 +22,5 @@
 #define NEO_PIXEL_PIN 14
 #define NEO_PIXEL_COUNT 16
 
-#endif
+// How long the color loop takes to go all the way around
+#define LOOP_CYCLE_MS 30000

@@ -9,6 +9,6 @@ CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE=y
 # Keep the 1 ms tick the firmware was written against
 CONFIG_FREERTOS_HZ=1000
 
-# Stay on the core that wifi doesn't use. The led strip's RMT interrupt is
-# allocated on whichever core calls ring.begin().
-CONFIG_ESP_MAIN_TASK_AFFINITY_CPU1=y
+# Keep the network work on core 0, the lights task has core 1 to itself
+CONFIG_MQTT_TASK_CORE_SELECTION_ENABLED=y
+CONFIG_MQTT_USE_CORE_0=y

@@ -1,7 +1,4 @@
-#ifndef __RGB_TREE_WIFI_H__
-#define __RGB_TREE_WIFI_H__
+#pragma once
 
 // Blocks until connected. The connection is restored automatically if it drops.
 void wifiConnect(void);
-
-#endif
