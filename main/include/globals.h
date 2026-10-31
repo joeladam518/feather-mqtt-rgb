@@ -8,24 +8,17 @@
 #include <freertos/semphr.h>
 #include <freertos/queue.h>
 
-#include <WiFi.h>
 #include <mqtt_client.h>
-#include <Adafruit_NeoPixel.h>
 
 #include "NeoPixelRing.h"
-
-// Wifi client
-extern WiFiClient wifiClient;
 
 // Mqtt client
 extern esp_mqtt_client_handle_t mqttClient;
 
-// Adafruit NeoPixels
-extern Adafruit_NeoPixel neoPixel;
+// NeoPixels
 extern NeoPixelRing ring;
 
 // freertos variables
-extern TaskHandle_t mqttMTaskHandle;
 extern TaskHandle_t processShortTaskHandle;
 extern TaskHandle_t processLongTaskHandle;
 extern QueueHandle_t shortActionQueue;

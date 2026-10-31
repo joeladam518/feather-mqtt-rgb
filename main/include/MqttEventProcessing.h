@@ -8,7 +8,7 @@
 #define SUBSCRIPTIONDATALEN 100
 #define READ_SUBSCRIPTION_TIMEOUT 2000
 
-static const char *MQTT_TAG = "MQTT_RGB_TREE";
+static const char *const MQTT_TAG = "MQTT_RGB_TREE";
 
 typedef void (*SubscribeCallbackBufferType)(char *str, uint16_t len);
 

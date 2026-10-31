@@ -3,7 +3,6 @@
 
 #include "config.h"
 #include "globals.h"
-#include <Arduino.h>
 #include <ArduinoJson.h>
 #include "MqttEventProcessing.h"
 

@@ -1,18 +1,25 @@
 #ifndef __NEO_PIXEL_RING_H__
 #define __NEO_PIXEL_RING_H__
 
-#include <Arduino.h>
-#include <Adafruit_NeoPixel.h>
+#include "config.h"
+#include <stdint.h>
+#include <led_strip.h>
 #include "led.h"
 
 class NeoPixelRing
 {
 private:
-    Adafruit_NeoPixel *neoPixel;
+    led_strip_handle_t strip;
+    // led_strip can't read pixels back, so keep track of what was written
+    RGB_t pixels[NEO_PIXEL_COUNT];
+
+    void setPixelColor(uint16_t index, uint8_t r, uint8_t g, uint8_t b);
+    void setPixelColor(uint16_t index, uint32_t color);
+    void show(void);
 
 public:
     // Constructor
-    NeoPixelRing(Adafruit_NeoPixel *neoPixel);
+    NeoPixelRing(void);
 
     // Destructor
     //~NeoPixelRing();

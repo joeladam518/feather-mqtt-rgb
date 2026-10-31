@@ -34,8 +34,4 @@
 #define NEO_PIXEL_PIN 14
 #define NEO_PIXEL_COUNT 16
 
-// Mqtt overrides
-// #define MQTT_CORE_SELECTION_ENABLED 0
-// #define MQTT_TASK_CORE PRO_CPU_NUM
-
 #endif

@@ -1,0 +1,14 @@
+# Adafruit HUZZAH32 ESP32 Feather
+CONFIG_IDF_TARGET="esp32"
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
+
+# The image is ~940K, right up against the stock 1M app partition
+CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE=y
+
+# Keep the 1 ms tick the firmware was written against
+CONFIG_FREERTOS_HZ=1000
+
+# Stay on the core that wifi doesn't use. The led strip's RMT interrupt is
+# allocated on whichever core calls ring.begin().
+CONFIG_ESP_MAIN_TASK_AFFINITY_CPU1=y

@@ -6,10 +6,10 @@
 #include "freertos/semphr.h"
 #include "freertos/queue.h"
 
-#include <Arduino.h>
-#include <HardwareSerial.h>
+#include <string.h>
+
 #include <ArduinoJson.h>
-#include <Adafruit_NeoPixel.h>
+#include <driver/gpio.h>
 #include <esp_log.h>
 #include <mqtt_client.h>
 
@@ -79,7 +79,7 @@ static void setAction(
     clearAction(action);
 
     if (SUBSCRIPTIONDATALEN < event->data_len) {
-        Serial.println("Data length was too long");
+        ESP_LOGW(MQTT_TAG, "Data length was too long");
         return;
     }
 
@@ -95,12 +95,11 @@ static void setAction(
 void publishRgbStatus(void)
 {
     #if defined(APP_DEBUG) && APP_DEBUG
-        Serial.println(F("publishRgbStatus()"));
+        ESP_LOGI(MQTT_TAG, "publishRgbStatus()");
     #endif
 
     char output[SUBSCRIPTIONDATALEN];
-    const int capacity = JSON_OBJECT_SIZE(3);
-    StaticJsonDocument<capacity> doc;
+    JsonDocument doc;
     RGB_t color = {0, 0, 0};
 
     if (xSemaphoreTake(ringMutex, 0) == pdTRUE) {
@@ -108,7 +107,7 @@ void publishRgbStatus(void)
         xSemaphoreGive(ringMutex);
     } else {
         #if defined(APP_DEBUG) && APP_DEBUG
-            Serial.println(F("The ring is already taken."));
+            ESP_LOGI(MQTT_TAG, "The ring is already taken.");
         #endif
 
         return;
@@ -125,16 +124,15 @@ void publishRgbStatus(void)
 void publishTwinkleLightStatus(void)
 {
     #if defined(APP_DEBUG) && APP_DEBUG
-        Serial.println(F("publishTwinkleLightStatus()"));
+        ESP_LOGI(MQTT_TAG, "publishTwinkleLightStatus()");
     #endif
 
     char output[SUBSCRIPTIONDATALEN];
-    const int capacity = JSON_OBJECT_SIZE(3);
-    StaticJsonDocument<capacity> doc;
+    JsonDocument doc;
 
-    doc["tw1"] = digitalRead(TW1_PIN);
-    doc["tw2"] = digitalRead(TW2_PIN);
-    doc["tw3"] = digitalRead(TW3_PIN);
+    doc["tw1"] = gpio_get_level((gpio_num_t)TW1_PIN);
+    doc["tw2"] = gpio_get_level((gpio_num_t)TW2_PIN);
+    doc["tw3"] = gpio_get_level((gpio_num_t)TW3_PIN);
 
     serializeJson(doc, output, sizeof(output));
     esp_mqtt_client_publish(mqttClient, PUB_GET_TW_LIGHTS, output, 0, 0, 0);
@@ -146,12 +144,12 @@ void publishTwinkleLightStatus(void)
 void getColor(SubscriptionAction_t *action)
 {
     #if defined(APP_DEBUG) && APP_DEBUG
-        Serial.println("getColor()");
+        ESP_LOGI(MQTT_TAG, "getColor()");
     #endif
 
     if (SUBSCRIPTIONDATALEN < action->dataLength) {
         #if defined(APP_DEBUG) && APP_DEBUG
-            Serial.println(F("data is larger than max legnth. Can not parse."));
+            ESP_LOGI(MQTT_TAG, "data is larger than max legnth. Can not parse.");
         #endif
 
         return;
@@ -163,19 +161,18 @@ void getColor(SubscriptionAction_t *action)
 void setColor(SubscriptionAction_t *action)
 {
     #if defined(APP_DEBUG) && APP_DEBUG
-        Serial.println("setColor()");
+        ESP_LOGI(MQTT_TAG, "setColor()");
     #endif
 
     if (SUBSCRIPTIONDATALEN < action->dataLength) {
         #if defined(APP_DEBUG) && APP_DEBUG
-            Serial.println(F("data is larger than max legnth. Can not parse."));
+            ESP_LOGI(MQTT_TAG, "data is larger than max legnth. Can not parse.");
         #endif
 
         return;
     }
 
-    const int capacity = JSON_OBJECT_SIZE(4);
-    StaticJsonDocument<capacity> doc;
+    JsonDocument doc;
     DeserializationError error = deserializeJson(doc, action->data);
 
     if (error) {
@@ -200,7 +197,7 @@ void setColor(SubscriptionAction_t *action)
         xSemaphoreGive(ringMutex);
     } else {
         #if defined(APP_DEBUG) && APP_DEBUG
-            Serial.println(F("The ring is already taken. setColor()"));
+            ESP_LOGI(MQTT_TAG, "The ring is already taken. setColor()");
         #endif
     }
 
@@ -210,12 +207,12 @@ void setColor(SubscriptionAction_t *action)
 void getTwinkleLights(SubscriptionAction_t *action)
 {
     #if defined(APP_DEBUG) && APP_DEBUG
-        Serial.println("getTwinkleLights()");
+        ESP_LOGI(MQTT_TAG, "getTwinkleLights()");
     #endif
 
     if (SUBSCRIPTIONDATALEN < action->dataLength) {
         #if defined(APP_DEBUG) && APP_DEBUG
-            Serial.println(F("data is larger than max legnth. Can not parse."));
+            ESP_LOGI(MQTT_TAG, "data is larger than max legnth. Can not parse.");
         #endif
 
         return;
@@ -227,19 +224,18 @@ void getTwinkleLights(SubscriptionAction_t *action)
 void setTwinkleLights(SubscriptionAction_t *action)
 {
     #if defined(APP_DEBUG) && APP_DEBUG
-        Serial.println("setTwinkleLights()");
+        ESP_LOGI(MQTT_TAG, "setTwinkleLights()");
     #endif
 
     if (SUBSCRIPTIONDATALEN < action->dataLength) {
         #if defined(APP_DEBUG) && APP_DEBUG
-            Serial.println(F("data is larger than max legnth. Can not parse."));
+            ESP_LOGI(MQTT_TAG, "data is larger than max legnth. Can not parse.");
         #endif
 
         return;
     }
 
-    const int capacity = JSON_OBJECT_SIZE(3);
-    StaticJsonDocument<capacity> doc;
+    JsonDocument doc;
     DeserializationError error = deserializeJson(doc, action->data);
 
     if (error) {
@@ -250,33 +246,33 @@ void setTwinkleLights(SubscriptionAction_t *action)
         return;
     }
 
-    if (doc.containsKey("tw1")) {
+    if (doc["tw1"].is<JsonVariantConst>()) {
         uint8_t tw1 = doc["tw1"].as<uint8_t>();
 
         if (tw1 > 0) {
-            digitalWrite(TW1_PIN, HIGH);
+            gpio_set_level((gpio_num_t)TW1_PIN, 1);
         } else {
-            digitalWrite(TW1_PIN, LOW);
+            gpio_set_level((gpio_num_t)TW1_PIN, 0);
         }
     }
 
-    if (doc.containsKey("tw2")) {
+    if (doc["tw2"].is<JsonVariantConst>()) {
         uint8_t tw2 = doc["tw2"].as<uint8_t>();
 
         if (tw2 > 0) {
-            digitalWrite(TW2_PIN, HIGH);
+            gpio_set_level((gpio_num_t)TW2_PIN, 1);
         } else {
-            digitalWrite(TW2_PIN, LOW);
+            gpio_set_level((gpio_num_t)TW2_PIN, 0);
         }
     }
 
-    if (doc.containsKey("tw3")) {
+    if (doc["tw3"].is<JsonVariantConst>()) {
         uint8_t tw3 = doc["tw3"].as<uint8_t>();
 
         if (tw3 > 0) {
-            digitalWrite(TW3_PIN, HIGH);
+            gpio_set_level((gpio_num_t)TW3_PIN, 1);
         } else {
-            digitalWrite(TW3_PIN, LOW);
+            gpio_set_level((gpio_num_t)TW3_PIN, 0);
         }
     }
 
@@ -293,7 +289,7 @@ void processShortTask(void *parameter)
     while (1) {
         if (xQueueReceive(shortActionQueue, &action, 0) == pdTRUE) {
             #if defined(APP_DEBUG) && APP_DEBUG
-                Serial.println(F("processShortTask()"));
+                ESP_LOGI(MQTT_TAG, "processShortTask()");
                 printSubscriptionAction(&action);
             #endif
 
@@ -308,14 +304,11 @@ void processShortTask(void *parameter)
                     setTwinkleLights(&action);
                     break;
                 default:
-                    Serial.println(F("processShortTask() did not call any callback"));
+                    ESP_LOGW(MQTT_TAG, "processShortTask() did not call any callback");
             }
 
             clearAction(&action);
 
-            #if defined(APP_DEBUG) && APP_DEBUG
-                Serial.println(F(""));
-            #endif
         }
 
         vTaskDelay(250 / portTICK_PERIOD_MS);
@@ -329,7 +322,7 @@ void processLongTask(void *parameter)
     while (1) {
         if (xQueueReceive(longActionQueue, &action, 0) == pdTRUE) {
             #if defined(APP_DEBUG) && APP_DEBUG
-                Serial.println(F("processLongTask()"));
+                ESP_LOGI(MQTT_TAG, "processLongTask()");
                 printSubscriptionAction(&action);
             #endif
 
@@ -338,14 +331,11 @@ void processLongTask(void *parameter)
                     setColor(&action);
                     break;
                 default:
-                    Serial.println(F("processLongTask() did not call any callback"));
+                    ESP_LOGW(MQTT_TAG, "processLongTask() did not call any callback");
             }
 
             clearAction(&action);
 
-            #if defined(APP_DEBUG) && APP_DEBUG
-                Serial.println(F(""));
-            #endif
         }
 
         vTaskDelay(50 / portTICK_PERIOD_MS);
@@ -375,9 +365,8 @@ static void mqtt_subsribe_all(esp_mqtt_client_handle_t client)
 static void mqtt_handle_data_event(esp_mqtt_event_handle_t event)
 {
     #if defined(APP_DEBUG) && APP_DEBUG
-        Serial.println(F("mqtt_handle_data_event()"));
+        ESP_LOGI(MQTT_TAG, "mqtt_handle_data_event()");
         printMqttMessageData(event->topic, event->topic_len, event->data, event->data_len);
-        Serial.println("");
     #endif
 
     SubscriptionAction_t action;

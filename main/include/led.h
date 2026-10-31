@@ -1,6 +1,8 @@
 #ifndef __LED_H__
 #define __LED_H__
 
+#include <stdint.h>
+
 typedef struct RGB
 {
     uint8_t r;
