@@ -11,5 +11,5 @@ sdkconfig.old
 .vscode/settings.json
 
 # ignore config
-main/include/config.h
+src/config.h
 .env

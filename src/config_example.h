@@ -1,6 +1,6 @@
 // config_example.h: a template for your settings.
 //
-// Copy this to main/include/config.h and fill it in. config.h is gitignored, so your
+// Copy this to src/config.h and fill it in. config.h is gitignored, so your
 // passwords never get committed, and this file stays safe to share. These are #defines
 // because they're fixed when the firmware is built. Changing one means building and
 // flashing again.
