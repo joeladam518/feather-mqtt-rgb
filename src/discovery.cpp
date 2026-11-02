@@ -7,7 +7,7 @@
 //
 //   {
 //     "dev":  {"ids":"rgb_tree", "name":"RGB Tree", ...},   the device itself
-//     "o":    {"name":"feather-mqtt-rgb-tree", ...},        what software sent this
+//     "o":    {"name":"feather-mqtt-rgb", ...},             what software sent this
 //     "cmps": {                                             its components, or entities
 //       "ring":    {"p":"light", "schema":"json", ...},
 //       "twinkle": {"p":"switch", ...}
@@ -40,8 +40,8 @@ size_t serializeDiscovery(char *output, size_t size)
 
     // The software that's sending this, which the docs require for device discovery
     JsonObject origin = doc["o"].to<JsonObject>();
-    origin["name"] = "feather-mqtt-rgb-tree";
-    origin["url"] = "https://github.com/joeladam518/feather-mqtt-rgb-tree";
+    origin["name"] = "feather-mqtt-rgb";
+    origin["url"] = "https://github.com/joeladam518/feather-mqtt-rgb";
 
     JsonObject components = doc["cmps"].to<JsonObject>();
 

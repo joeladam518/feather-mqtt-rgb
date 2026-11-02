@@ -8,4 +8,4 @@ set(EXTRA_COMPONENT_DIRS "${CMAKE_CURRENT_LIST_DIR}/src")
 
 # Pulls in ESP-IDF's build system. IDF_PATH gets set by running export.sh.
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
-project(feather-mqtt-rgb-tree)
+project(feather-mqtt-rgb)

@@ -1,4 +1,4 @@
-# feather-mqtt-rgb-tree
+# feather-mqtt-rgb
 
 An MQTT powered RGB LED tree. It does three things:
 
